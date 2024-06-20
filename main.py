@@ -3,115 +3,175 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import animation
 
-# Fitness function
-# Pierwsza funkcja testowa do sprawdzenia działania algorytmu
-# f(x1,x2)=(x1+2*-x2+3)^2 + (2*x1+x2-8)^2
-# Poszukiwanie minimum ktore wynosi 0
-
-def fitness_function(x1, x2):
-    f1 = x1 + 2 * -x2 + 3
-    f2 = 2 * x1 + x2 - 8
-    z = f1**2 + f2**2
+# Rotated Hyper-Ellipsoid Function in 3D
+def hyper_ellipsoid_function(x):
+    z = 0
+    for i in range(len(x)):
+        for j in range(i + 1):
+            z += x[j]**2
     return z
 
-def update_velocity(particle, velocity, pbest, gbest, w_min=0.5, w_max=1.0, c=0.1):
-    # Inicjalizacja nowej tablicy prędkości
+# Funkcja Michalewicza
+def michalewicz_function(x, m=10):
+    z = 0
+    for i in range(len(x)):
+        z += np.sin(x[i]) * (np.sin((i + 1) * x[i]**2 / np.pi))**(2 * m)
+    return -z
+
+# Funkcja Styblinski-Tang
+def styblinski_tang_function(x):
+    x = np.array(x)
+    return np.sum(x**4 - 16 * x**2 + 5 * x) / 2.0
+
+# Funkcja Rosenbrock
+def rosenbrock_function(x):
+    x = np.array(x)
+    return np.sum(100.0 * (x[1:] - x[:-1]**2)**2 + (1 - x[:-1])**2)
+
+# Funkcja Sferyczna
+def sphere_function(x):
+    x = np.array(x)
+    return np.sum(x**2)
+
+#
+# Funkcja aktualizacji prędkości
+def update_velocity(particle, velocity, pbest, gbest, w, c=0.1):
     num_particle = len(particle)
     new_velocity = np.zeros(num_particle)
-    # Losowe generowanie r1, r2 i wagę bezwładności z rozkładu normalnego
-    r1 = random.uniform(0, w_max)
-    r2 = random.uniform(0, w_max)
-    w = random.uniform(w_min, w_max)
+    r1 = random.uniform(0, 1)
+    r2 = random.uniform(0, 1)
     c1 = c
     c2 = c
-    # Obliczanie nowej prędkość
     for i in range(num_particle):
         new_velocity[i] = w * velocity[i] + c1 * r1 * (pbest[i] - particle[i]) + c2 * r2 * (gbest[i] - particle[i])
     return new_velocity
 
-def update_position(particle, velocity):
-    # Przenoszenie czasteczki, dodając prędkość
+# Funkcja aktualizacji pozycji
+def update_position(particle, velocity, position_min, position_max):
     new_particle = particle + velocity
+    new_particle = np.clip(new_particle, position_min, position_max)  # Ensure particles stay within bounds
     return new_particle
 
-def pso_2d(population, dimension, position_min, position_max, generation, fitness_criterion):
-    # Inicjalizacja
-    # Populacji
+# Funkcja PSO
+def pso_3d(population, dimension, position_min, position_max, generation, fitness_criterion, fitness_function):
     particles = np.array([[random.uniform(position_min, position_max) for j in range(dimension)] for i in range(population)])
-    # Najlepsza pozycja cząstki
     pbest_position = np.copy(particles)
-    # Wartość dopasowania
-    pbest_fitness = np.array([fitness_function(p[0], p[1]) for p in particles])
-    # Indeks najlepszej cząstki
+    pbest_fitness = np.array([fitness_function(p) for p in particles])
     gbest_index = np.argmin(pbest_fitness)
-    # Pozycja najlepszej cząstki globalnej
     gbest_position = pbest_position[gbest_index]
-    # Prędkość (rozpoczynając od zerowej prędkości)
     velocity = np.zeros((population, dimension))
-
-    # Miejsce na animację
     images = []
 
-    # Pętla na liczbę generacji
+    early_stop = False
     for t in range(generation):
-        # Zatrzymać, jeśli średnia wartość dopasowania osiągnęła zdefiniowane kryterium sukcesu
-        if np.average(pbest_fitness) <= fitness_criterion:
+        if early_stop:
             break
-        else:
-            for n in range(population):
-                # Zaktualizowanie prędkości każdej cząstki
-                velocity[n] = update_velocity(particles[n], velocity[n], pbest_position[n], gbest_position)
-                # Przenoszenie cząstki na nową pozycję
-                particles[n] = update_position(particles[n], velocity[n])
-                # Obliczanie wartość dopasowania
-                fitness_value = fitness_function(particles[n][0], particles[n][1])
-                # Zaktualizowanie najlepszego wyniku
-                if fitness_value < pbest_fitness[n]:
-                    pbest_fitness[n] = fitness_value
-                    pbest_position[n] = particles[n]
 
-        # Znajdowanie indeks najlepszej cząstki
+        w = 0.9 - 0.7 * (t / generation)  # Z biegiem czasu zmniejsza masę bezwładności
+        for n in range(population):
+            velocity[n] = update_velocity(particles[n], velocity[n], pbest_position[n], gbest_position, w)
+            particles[n] = update_position(particles[n], velocity[n], position_min, position_max)
+            fitness_value = fitness_function(particles[n])
+            if fitness_value < pbest_fitness[n]:
+                pbest_fitness[n] = fitness_value
+                pbest_position[n] = particles[n]
+
         gbest_index = np.argmin(pbest_fitness)
-        # Zaktualizowanie pozycji najlepszej cząstki
         gbest_position = pbest_position[gbest_index]
 
-        # Do animacji: uchwyć stan w każdej generacji
-        image = ax.scatter3D([particles[n][0] for n in range(population)],
-                             [particles[n][1] for n in range(population)],
-                             [fitness_function(particles[n][0], particles[n][1]) for n in range(population)], c='b')
+        image = ax.scatter([particles[n][0] for n in range(population)],
+                           [particles[n][1] for n in range(population)],
+                           [fitness_function(particles[n]) for n in range(population)], c='b')
         images.append([image])
 
-    # Wyświetlić wyniki
+        # Warunek wczesnego zatrzymania funkcji hiperelipsoidalnej
+        if fitness_function == hyper_ellipsoid_function and np.average(pbest_fitness) <= fitness_criterion:
+            early_stop = True
+
     print('Najlepsza globalna pozycja: ', gbest_position)
     print('Najlepsza wartość dopasowania: ', min(pbest_fitness))
     print('Średnia wartość dopasowania najlepszych cząstek: ', np.average(pbest_fitness))
-    print('Liczba generacji: ', t)
+    print('Liczba generacji: ', t + 1)
+
+    if not images:
+        image = ax.scatter([particles[n][0] for n in range(population)],
+                           [particles[n][1] for n in range(population)],
+                           [fitness_function(particles[n]) for n in range(population)], c='b')
+        images.append([image])
 
     return images
 
-population = 100
-dimension = 2
-position_min = -100.0
-position_max = 100.0
-generation = 400
-fitness_criterion = 10e-4
+# Główna funkcja do uruchamiania PSO z wybraną przez użytkownika funkcją fitness
+def main():
+    print("Wybierz funkcję do optymalizacji:")
+    print("1. Rotated Hyper-Ellipsoid Function")
+    print("2. Michalewicz Function")
+    print("3. Styblinski-Tang Function")
+    print("4. Rosenbrock Function")
+    print("5. Sphere Function")
+    choice = int(input("Wybór (1-5): "))
 
-# Przygotowanie do rysowania
-fig = plt.figure(figsize=(10, 10))
-ax = fig.add_subplot(111, projection='3d')
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.set_zlabel('z')
-x = np.linspace(position_min, position_max, 80)
-y = np.linspace(position_min, position_max, 80)
-X, Y = np.meshgrid(x, y)
-Z = fitness_function(X, Y)
-ax.plot_wireframe(X, Y, Z, color='r', linewidth=0.2)
+    if choice == 1:
+        fitness_function = hyper_ellipsoid_function
+        dimension = 6
+        fitness_criterion = 1e-4
+        generation = 200
+    elif choice == 2:
+        fitness_function = michalewicz_function
+        dimension = 5
+        fitness_criterion = 1e-3
+        generation = 300
+    elif choice == 3:
+        fitness_function = styblinski_tang_function
+        dimension = 3
+        fitness_criterion = 1e-3
+        generation = 100
+    elif choice == 4:
+        fitness_function = rosenbrock_function
+        dimension = 3
+        fitness_criterion = 1e-3
+        generation = 300
+    elif choice == 5:
+        fitness_function = sphere_function
+        dimension = 3
+        fitness_criterion = 1e-3
+        generation = 100
+    else:
+        print("Nieprawidłowy wybór!")
+        return
 
-# Uruchom PSO i uchwyć klatki animacji
-images = pso_2d(population, dimension, position_min, position_max, generation, fitness_criterion)
+    population = 100
+    position_min = 0 if choice == 5 else -10.0
+    position_max = np.pi if choice == 5 else 10.0
 
-# Wygenerowanie animacji
-animated_image = animation.ArtistAnimation(fig, images)
-animated_image.save('./pso_simple.gif', writer='pillow')
-plt.show()
+    fig = plt.figure(figsize=(10, 10))
+    global ax
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+
+    x = np.linspace(position_min, position_max, 100)
+    y = np.linspace(position_min, position_max, 100)
+    X, Y = np.meshgrid(x, y)
+    Z = np.zeros_like(X)
+    for i in range(X.shape[0]):
+        for j in range(X.shape[1]):
+            point = [X[i, j], Y[i, j]] + [np.pi/2] * (dimension - 2)
+            Z[i, j] = fitness_function(point)
+
+    ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.6)
+
+    z_min = np.min(Z)
+    z_max = np.max(Z)
+    z_margin = (z_max - z_min) * 0.1
+    ax.set_zlim(z_min - z_margin, z_max + z_margin)
+
+    images = pso_3d(population, dimension, position_min, position_max, generation, fitness_criterion, fitness_function)
+
+    animated_image = animation.ArtistAnimation(fig, images, interval=100, blit=True, repeat_delay=1000)
+    animated_image.save('./pso_complex.gif', writer='pillow')
+    plt.show()
+
+if __name__ == "__main__":
+    main()
